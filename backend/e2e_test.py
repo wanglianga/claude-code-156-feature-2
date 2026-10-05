@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""端到端业务链验证：到货→质检→分拣→上架→预付款→出库→投诉→温区故障转仓→报损→账单→追溯→看板。"""
+"""端到端业务链验证：到货→质检(签名)→分拣(视频/照片/工位)→损耗争议复核(抽样/周转筐证据链)
+→上架→预付款→出库→投诉→温区故障转仓→报损→账单(复核口径)→追溯→看板。"""
 import json
 import urllib.request
 import urllib.error
@@ -79,12 +80,13 @@ b3 = call("POST", "/api/batches/arrival", {
 })
 B3 = b3["id"]
 
-# ---------- 5. 批次A 质检转分拣 ----------
+# ---------- 5. 批次A 质检转分拣（含质检员电子签名，作为复核平台证据） ----------
 call("POST", "/api/inspections", {
     "batchId": B1, "inspector": "李检",
     "appearanceScore": 82, "maturityScore": 85, "rotRate": 0.02, "moistureRate": 0.88,
     "measuredTemp": 9, "certificateOk": True, "mixedConfirmed": True,
-    "decision": "SORT", "remark": "温度偏高，需分拣分级后速入冰温库"
+    "decision": "SORT", "signature": "李检（电子签名）",
+    "remark": "温度偏高，需分拣分级后速入冰温库"
 })
 
 # ---------- 6. 批次B 质检直接入库 A级，核定损耗2% ----------
@@ -105,8 +107,12 @@ call("POST", "/api/inspections", {
 })
 
 # ---------- 8. 批次A 分拣：A 600@12, B 330@8, 加工 20@3, 合计950，损耗50(5%)，工时90分钟，货主争议 ----------
+# 同时上传分拣视频、坏果照片、分拣工位——争议复核时平台向货主公开展示
 sort1 = call("POST", "/api/sortings", {
     "batchId": B1, "sorter": "孙姐", "inputWeight": 1000, "laborMinutes": 90,
+    "sortStation": "1号分拣台",
+    "sortVideoUrl": "VIDEO-SORT-20261004-01",
+    "badFruitPhotos": "PHOTO-BAD-001,PHOTO-BAD-002",
     "disputed": True, "disputeNote": "货主主张运输途中掉粒属正常，损耗应≤3%",
     "items": [
         {"grade": "A", "weight": 600, "unitPrice": 12.0, "shelfLifeDays": 6},
@@ -116,11 +122,103 @@ sort1 = call("POST", "/api/sortings", {
 })
 SID = sort1["id"]
 
-# 争议裁定：冷库认可30kg损耗，20kg回补货主
-call("POST", f"/api/sortings/{SID}/resolve-dispute", {
-    "acceptLoss": False, "adjudicatedLoss": 30,
-    "note": "20kg 为低温操作不当压伤，冷库承担"
+# ---------- 8b. 货主发起损耗争议复核（平台展示原入库重量/视频/坏果照片/等级/质检员签名） ----------
+import datetime as _dt
+def _t(minutes_ago):
+    return (_dt.datetime.now() - _dt.timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%S")
+
+# 录入四个周转筐的装卸/搬运时间线（筐号↔工位↔搬运时间）
+crates = [
+    # K-07：底层筐、码放7层高，挤压风险高，到台10分钟即开拣
+    {"crateNo": "K-07", "stackLayer": 1, "stackHeight": 7, "sortStation": "1号分拣台",
+     "arrivedAt": _t(100), "unloadedAt": _t(80), "reachedStationAt": _t(70), "sortingStartedAt": _t(60),
+     "handler": "装卸班·老吴"},
+    # K-12：到台后 50 分钟才开拣，分拣台长时间暴露
+    {"crateNo": "K-12", "stackLayer": 4, "stackHeight": 4, "sortStation": "1号分拣台",
+     "arrivedAt": _t(115), "unloadedAt": _t(90), "reachedStationAt": _t(75), "sortingStartedAt": _t(25),
+     "handler": "装卸班·老吴"},
+    {"crateNo": "K-05", "stackLayer": 3, "stackHeight": 4, "sortStation": "1号分拣台",
+     "arrivedAt": _t(60), "unloadedAt": _t(55), "reachedStationAt": _t(50), "sortingStartedAt": _t(45),
+     "handler": "装卸班·老吴"},
+    {"crateNo": "K-18", "stackLayer": 5, "stackHeight": 5, "sortStation": "1号分拣台",
+     "arrivedAt": _t(50), "unloadedAt": _t(45), "reachedStationAt": _t(40), "sortingStartedAt": _t(33),
+     "handler": "装卸班·老吴"},
+]
+for c in crates:
+    call("POST", "/api/review-support/crate-handling", {"batchId": B1, "sortingId": SID, **c})
+
+rv = call("POST", "/api/loss-reviews", {
+    "sortingId": SID, "ownerClaimLossRate": 0.03,
+    "ownerClaimNote": "货主主张运输途中掉粒属正常，损耗应≤3%",
+    "reviewer": "周复审"
 })
+RID = rv["id"]
+# 重复发起应被拒绝
+call("POST", "/api/loss-reviews", {"sortingId": SID, "reviewer": "周复审"}, expect=400)
+
+# ---------- 8c. 复核员重新抽样（两次）：累计坏果率 3% → 复核损耗 30kg、可售 970kg ----------
+call("POST", f"/api/loss-reviews/{RID}/samples", {
+    "samplePoint": "三号位/K-07", "sampleWeight": 100, "rotWeight": 6,
+    "gradeAWeight": 70, "gradeBWeight": 22, "gradeProcessWeight": 2,
+    "operator": "周复审", "remark": "底层筐坏果偏多"
+})
+s2 = call("POST", f"/api/loss-reviews/{RID}/samples", {
+    "samplePoint": "一号位/K-05", "sampleWeight": 100, "rotWeight": 0,
+    "gradeAWeight": 75, "gradeBWeight": 25, "operator": "周复审"
+})
+rd = call("GET", f"/api/loss-reviews/{RID}")
+assert float(rd["review"]["sampleRotRate"]) == 0.03, "累计抽样坏果率应为 3%"
+assert float(rd["review"]["reviewedLossWeight"]) == 30.0, "推算复核损耗应为 30kg"
+assert float(rd["review"]["reviewedSaleableWeight"]) == 970.0, "调整后可售应为 970kg"
+assert rd["sorting"]["sortVideoUrl"] == "VIDEO-SORT-20261004-01"
+assert "PHOTO-BAD-001" in rd["sorting"]["badFruitPhotos"]
+assert rd["inspection"]["signature"] == "李检（电子签名）"
+assert len(rd["gradeItems"]) == 3 and len(rd["crateHandling"]) == 4
+
+# ---------- 8d. 复核结案：坏果集中 K-07(装卸挤压)/K-12(分拣台暴露)，多因混合，冷库承担20kg ----------
+conc = call("POST", f"/api/loss-reviews/{RID}/conclude", {
+    "lossCause": "MIXED", "responsibility": "WAREHOUSE",
+    "reviewedSaleableWeight": 970, "crateConcentrated": True,
+    "sortTeam": "晚班分拣一组",
+    "crates": [
+        {"crateNo": "K-07", "badFruitWeight": 12, "damagePattern": "底层挤压破皮压伤、掉粒"},
+        {"crateNo": "K-12", "badFruitWeight": 6, "damagePattern": "萎蔫掉粒、果梗发干"}
+    ],
+    "conclusion": "抽样坏果率3%：K-07 底层码7层装卸挤压、K-12 到台暴露50分钟，合计20kg为冷库操作不当，其余30kg为到货高温质量损耗。",
+    "reviewerSignature": "周复审"
+})
+assert float(conc["warehouseBorneWeight"]) == 20.0, "冷库承担重量应为 20kg"
+assert float(conc["compensateAmount"]) == 208.40, "冷库赔付应=20kg×分拣均价10.42=208.40元"
+assert conc["inspectorDeductedPoints"] == 10, "抽样坏果率3%>质检腐损率2%，质检员漏检应扣10分"
+assert conc["inspectorName"] == "李检"
+assert conc["customerCompensationId"] is not None
+assert "K-07" in conc["crateAnalysis"] and "K-12" in conc["crateAnalysis"]
+assert "装卸挤压" in conc["crateAnalysis"] and "分拣台长时间暴露" in conc["crateAnalysis"]
+
+# 结案后不能再抽样
+call("POST", f"/api/loss-reviews/{RID}/samples",
+     {"sampleWeight": 10, "rotWeight": 1}, expect=400)
+# 已结案列表可查到
+done_list = call("GET", "/api/loss-reviews?status=CONCLUDED")
+assert any(r["id"] == RID for r in done_list)
+# 分拣单已回写复核单ID
+sortings_b1 = call("GET", f"/api/sortings/batch/{B1}")
+assert sortings_b1[0]["reviewId"] == RID
+assert float(sortings_b1[0]["adjudicatedLossWeight"]) == 30.0
+
+# 质检员考核汇总：李检 90 分（扣10）
+perf = call("GET", "/api/review-support/inspector-performance/summary")
+li = [p for p in perf if p["inspector"] == "李检"][0]
+assert li["score"] == 90 and li["missJudgeCount"] == 1 and li["deductedPoints"] == 10
+comps = call("GET", "/api/review-support/compensations")
+mycomp = [c for c in comps if c["reviewId"] == RID][0]
+assert float(mycomp["amount"]) == 208.40 and mycomp["sortTeam"] == "晚班分拣一组"
+assert mycomp["billWritten"] is False, "账单生成前赔付记录为待入账"
+# 分拣班组考核汇总
+teams = call("GET", "/api/review-support/team-performance")
+team = [t for t in teams if t["sortTeam"] == "晚班分拣一组"][0]
+assert team["caseCount"] == 1 and abs(float(team["borneWeight"]) - 20.0) < 0.01 \
+    and abs(float(team["compensateAmount"]) - 208.4) < 0.01, team
 
 # ---------- 9. 上架：批次A三个货位 → CW-01 三个库位；批次B待上架 lot ----------
 pending = call("GET", "/api/stock/pending")
@@ -202,9 +300,21 @@ items = call("GET", f"/api/bills/{FID}/items")
 print("  账单明细：")
 for it in items:
     print(f"    {it['type']:18s} {it['summary'][:46]:48s} 金额={it['amount']}")
+# 复核结论必须回写账单：冷库赔付 20kg × 10.42 = 208.4；货主承担 30kg 不计价；赔付台账留痕
+review_lines = [it for it in items if it["summary"].startswith("争议复核")]
+assert any("冷库赔付" in it["summary"] and abs(float(it["amount"]) - 208.40) < 0.01 for it in review_lines), \
+    "账单缺少争议复核冷库赔付 208.40 元"
+assert any("货主承担损耗" in it["summary"] and abs(float(it["weight"]) - 30.0) < 0.01 for it in review_lines), \
+    "账单缺少争议复核货主承担 30kg"
+assert any(it["summary"].startswith("客户赔付台账") for it in items), "账单缺少客户赔付台账留痕"
 call("POST", f"/api/bills/{FID}/confirm", None)
 settled = call("POST", f"/api/bills/{FID}/settle", {})
 print(f"  应付货主净额={settled['netPayable']} 预付款抵扣={settled['advanceDeducted']} 实付={settled['paidAmount']}")
+# 8150 销售 + 268.4 冷库补偿（复核208.4 + 加工级报损60）- 332.5 仓储 - 570 分拣 - 54 工时 - 300 投诉 - 2000 预付
+assert abs(float(settled['netPayable']) - 5161.90) < 0.05, f"应付货主净额应为 5161.90，实际 {settled['netPayable']}"
+# 账单生成后赔付记录回写为已入账
+comps2 = call("GET", "/api/review-support/compensations")
+assert [c for c in comps2 if c["reviewId"] == RID][0]["billWritten"] is True
 
 # ---------- 17. 退货批次不允许账单 ----------
 call("POST", "/api/bills/generate", {"batchId": B3}, expect=400)
@@ -213,8 +323,18 @@ call("POST", "/api/bills/generate", {"batchId": B3}, expect=400)
 chain = call("GET", f"/api/trace/batch/{B1}")
 print(f"  追溯时间线节点数={len(chain['timeline'])}，出库流向={[(f['customer'], f['weight']) for f in chain['finalFlow']]}")
 stages = [e["stage"] for e in chain["timeline"]]
-for s in ["ARRIVAL", "INSPECTION", "SORTING", "PUT_IN", "OUTBOUND", "COMPLAINT", "SETTLEMENT"]:
+for s in ["ARRIVAL", "INSPECTION", "SORTING", "LOSS_REVIEW", "PUT_IN", "OUTBOUND",
+          "COMPLAINT", "SETTLEMENT"]:
     assert s in stages, f"追溯链缺少 {s}"
+assert len(chain["lossReviews"]) == 1 and chain["lossReviews"][0]["id"] == RID
+assert len(chain["compensations"]) == 1 and abs(float(chain["compensations"][0]["amount"]) - 208.4) < 0.01
+ce = chain["crateEvidences"]
+assert {c["crateNo"] for c in ce} == {"K-07", "K-12"}
+k07 = [c for c in ce if c["crateNo"] == "K-07"][0]
+k12 = [c for c in ce if c["crateNo"] == "K-12"][0]
+assert k07["indicatedCause"] == "LOADING_SQUEEZE", f"K-07 应判装卸挤压，实际 {k07['indicatedCause']}"
+assert k12["indicatedCause"] == "SORT_EXPOSURE", f"K-12 应判分拣台暴露，实际 {k12['indicatedCause']}"
+assert k07["sortStation"] == "1号分拣台" and k12["exposedMinutes"] == 50
 
 # ---------- 19. 看板/调度 ----------
 ov = call("GET", "/api/dashboard/overview")
@@ -232,6 +352,33 @@ print(f"  未处理告警={len(alerts)}：{sorted(set(a['type'] for a in alerts)
 final_b1 = call("GET", f"/api/batches/{B1}")
 print(f"  批次A状态={final_b1['status']} 原净重={final_b1['netWeight']} 可售={final_b1['acceptedWeight']} "
       f"损耗={final_b1['lossWeight']} 已出={final_b1['outWeight']} 退货={final_b1['returnedWeight']}")
+# 复核调整：分拣950 + 冷库承担回补20 = 可售970；复核货主承担30 + 加工级报损20 = 损耗50
+assert float(final_b1['acceptedWeight']) == 970.0
+assert float(final_b1['lossWeight']) == 50.0
+assert float(final_b1['outWeight']) == 800.0
+
+# ---------- 21. 未抽样不能结案、无争议不能发起复核（负向校验） ----------
+b4 = call("POST", "/api/batches/arrival", {
+    "ownerId": 2, "categoryId": 2, "origin": "青山乡莓香村",
+    "productionDate": "2026-10-05", "grossWeight": 100, "arrivalTemp": 3, "packaging": "纸盒",
+    "certificateNo": "QY-CM-20261005-09", "issuingOrg": "县农检中心",
+    "certIssueDate": "2026-10-05", "certificateVerified": True,
+    "vehicleNo": "鲁Q·K2231", "mixedLoad": False,
+    "plannedCustomerId": 2, "settleMethod": "BUYOUT", "operator": "赵调度"
+})
+B4 = b4["id"]
+call("POST", "/api/inspections", {
+    "batchId": B4, "inspector": "李检", "appearanceScore": 90, "maturityScore": 90,
+    "rotRate": 0.02, "moistureRate": 0.9, "measuredTemp": 3, "certificateOk": True,
+    "decision": "SORT", "signature": "李检（电子签名）"
+})
+s4 = call("POST", "/api/sortings", {
+    "batchId": B4, "sorter": "孙姐", "inputWeight": 100, "laborMinutes": 20,
+    "sortStation": "2号分拣台", "disputed": False,
+    "items": [{"grade": "A", "weight": 95, "unitPrice": 25.0, "shelfLifeDays": 5}]
+})
+# 无争议分拣单不能发起复核
+call("POST", "/api/loss-reviews", {"sortingId": s4["id"], "reviewer": "周复审"}, expect=400)
 
 print("\n" + ("=" * 60))
 if failures:

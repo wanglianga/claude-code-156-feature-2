@@ -146,6 +146,10 @@
               <el-input v-model="form.remark" type="textarea" :rows="2"
                         placeholder="腐损部位、成熟度问题、温度复测说明等" />
             </el-form-item>
+            <el-form-item label="质检员签名">
+              <el-input v-model="form.signature" :placeholder="form.inspector || '电子签名（默认取质检员姓名）'"
+                        style="max-width:320px" />
+            </el-form-item>
             <el-button type="primary" :loading="saving" @click="submit">提交质检结论</el-button>
           </el-form>
         </el-card>
@@ -207,7 +211,7 @@ const defaultForm = () => ({
   rotRate: 0.02, moistureRate: 0.9, measuredTemp: 5,
   certificateOk: true, mixedConfirmed: false,
   decision: 'SORT', suggestedGrade: 'A',
-  downgradeWeight: 0, returnWeight: 0, estimatedLossRate: 0.02, remark: ''
+  downgradeWeight: 0, returnWeight: 0, estimatedLossRate: 0.02, signature: '', remark: ''
 })
 const form = reactive(defaultForm())
 

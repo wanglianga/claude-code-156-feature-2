@@ -48,6 +48,25 @@ public final class DomainEnums {
         OWNER("货主责任"), WAREHOUSE("冷库责任"), CARRIER("承运责任"), CUSTOMER("客户责任"), PENDING("待裁定");
         public final String desc; Responsibility(String d) { this.desc = d; } }
 
+    /** 损耗争议复核状态 */
+    public enum ReviewStatus {
+        OPEN("待复核"), SAMPLING("重新抽样中"), CONCLUDED("已复核结案");
+        public final String desc; ReviewStatus(String d) { this.desc = d; } }
+
+    /** 复核认定的损耗成因（来货质量 / 装卸挤压 / 分拣台长时间暴露） */
+    public enum LossCause {
+        ARRIVAL_QUALITY("到货质量差"),
+        LOADING_SQUEEZE("装卸挤压"),
+        SORT_EXPOSURE("分拣台长时间暴露"),
+        MIXED("多因混合"),
+        NORMAL("正常自然损耗");
+        public final String desc; LossCause(String d) { this.desc = d; } }
+
+    /** 复核中坏果集中位置的溯源环节（周转筐证据链） */
+    public enum CrateStage {
+        LOADING("装车/到货筐"), SORT_STATION("分拣工位筐"), TRANSFER("搬运周转筐");
+        public final String desc; CrateStage(String d) { this.desc = d; } }
+
     /** 账单状态 */
     public enum BillStatus { DRAFT("待确认"), CONFIRMED("已确认"), PAID("已结算");
         public final String desc; BillStatus(String d) { this.desc = d; } }
@@ -81,7 +100,7 @@ public final class DomainEnums {
     public enum Stage {
         ARRIVAL("到货登记"), INSPECTION("质检验收"), SORTING("分拣处理"),
         PUT_IN("入库上架"), TRANSFER("转仓移库"), LOSS("报损"),
-        OUTBOUND("出库发运"), COMPLAINT("客户投诉"), SETTLEMENT("财务结算");
+        OUTBOUND("出库发运"), COMPLAINT("客户投诉"), LOSS_REVIEW("损耗复核"), SETTLEMENT("财务结算");
         public final String desc; Stage(String d) { this.desc = d; } }
 
     /** 平台用户角色 */

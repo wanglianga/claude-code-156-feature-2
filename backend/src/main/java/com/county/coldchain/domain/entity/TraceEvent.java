@@ -2,6 +2,7 @@ package com.county.coldchain.domain.entity;
 
 import com.county.coldchain.domain.BaseEntity;
 import com.county.coldchain.domain.DomainEnums.Stage;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,6 +30,7 @@ public class TraceEvent extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private Stage stage;
     private String title;
+    @Column(columnDefinition = "text")
     private String detail;
     private String operator;
     private LocalDateTime eventAt;

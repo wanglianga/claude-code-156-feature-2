@@ -88,6 +88,51 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <el-card v-if="data.lossReviews && data.lossReviews.length" shadow="never" style="margin-bottom:12px">
+        <div class="card-title">分拣损耗争议复核结论</div>
+        <el-table :data="data.lossReviews" size="small" border style="margin-bottom:10px">
+          <el-table-column prop="reviewNo" label="复核单" width="160" class="mono" />
+          <el-table-column label="成因" width="130">
+            <template #default="{ row }">{{ $dict('LossCause', row.lossCause) }}</template>
+          </el-table-column>
+          <el-table-column label="责任" width="90">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.responsibility === 'WAREHOUSE' ? 'danger' : 'info'">
+                {{ $dict('Responsibility', row.responsibility) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="reviewedLossWeight" label="货主承担kg" width="95" />
+          <el-table-column prop="warehouseBorneWeight" label="冷库承担kg" width="95" />
+          <el-table-column prop="compensateAmount" label="冷库赔付元" width="90" />
+          <el-table-column label="质检员考核" width="150">
+            <template #default="{ row }">
+              {{ row.inspectorName }}：
+              <el-tag size="small" :type="row.inspectorDeductedPoints > 0 ? 'danger' : 'success'">
+                {{ row.inspectorDeductedPoints > 0 ? '扣'+row.inspectorDeductedPoints+'分' : '不扣分' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="conclusion" label="结论" min-width="200" show-overflow-tooltip />
+        </el-table>
+        <div v-if="data.crateEvidences && data.crateEvidences.length" class="card-title" style="font-size:13px">
+          周转筐证据链（筐号 ↔ 分拣工位 ↔ 搬运时间）
+        </div>
+        <el-table v-if="data.crateEvidences && data.crateEvidences.length" :data="data.crateEvidences"
+                  size="small" border>
+          <el-table-column prop="crateNo" label="筐号" width="80" />
+          <el-table-column prop="sortStation" label="分拣工位" width="110" />
+          <el-table-column prop="badFruitWeight" label="坏果kg" width="80" />
+          <el-table-column label="判定成因" width="130">
+            <template #default="{ row }">{{ $dict('LossCause', row.indicatedCause) }}</template>
+          </el-table-column>
+          <el-table-column label="暴露时长" width="90">
+            <template #default="{ row }">{{ row.exposedMinutes != null ? row.exposedMinutes+' 分钟' : '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="damagePattern" label="坏果形态" min-width="150" />
+        </el-table>
+      </el-card>
     </template>
   </div>
 </template>

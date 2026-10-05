@@ -25,5 +25,7 @@ public class InspectionRequest {
     private BigDecimal downgradeWeight;
     private BigDecimal returnWeight;
     private BigDecimal estimatedLossRate;
+    /** 质检员电子签名（签名图片 URL/编号或手写签名文本） */
+    private String signature;
     private String remark;
 }

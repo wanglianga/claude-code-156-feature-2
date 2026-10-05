@@ -43,6 +43,14 @@ app:
     # 分拣损耗率告警阈值
     loss-rate-warn: 0.05
     loss-rate-critical: 0.10
+  review:
+    # 争议复核周转筐证据链判定阈值
+    # 到分拣台后超过该分钟数未开拣 → 分拣台长时间暴露（冷库责任）
+    exposure-warn-minutes: 30
+    # 码放层高达到该层数且有挤压形态 → 装卸挤压（冷库责任）
+    squeeze-stack-height: 6
+    # 到货质量漏检一次的质检员扣分
+    miss-judge-points: 10
 
 logging:
   level:

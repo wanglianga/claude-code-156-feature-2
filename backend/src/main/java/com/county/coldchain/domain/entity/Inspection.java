@@ -50,5 +50,7 @@ public class Inspection extends BaseEntity {
     private BigDecimal returnWeight = BigDecimal.ZERO;
     /** 拟报损率（0-1，直接入库时） */
     private BigDecimal estimatedLossRate = BigDecimal.ZERO;
+    /** 质检员电子签名（签名图片 URL/编号或手写签名文本），争议复核平台证据之一 */
+    private String signature;
     private String remark;
 }

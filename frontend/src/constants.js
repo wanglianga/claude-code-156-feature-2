@@ -13,6 +13,12 @@ export const ENUMS = {
   Responsibility: {
     OWNER: '货主责任', WAREHOUSE: '冷库责任', CARRIER: '承运责任', CUSTOMER: '客户责任', PENDING: '待裁定'
   },
+  ReviewStatus: { OPEN: '待复核', SAMPLING: '重新抽样中', CONCLUDED: '已复核结案' },
+  LossCause: {
+    ARRIVAL_QUALITY: '到货质量差', LOADING_SQUEEZE: '装卸挤压',
+    SORT_EXPOSURE: '分拣台长时间暴露', MIXED: '多因混合', NORMAL: '正常自然损耗'
+  },
+  CrateStage: { LOADING: '装车/到货筐', SORT_STATION: '分拣工位筐', TRANSFER: '搬运周转筐' },
   ComplaintType: { BAD_FRUIT: '坏果腐损', SHORT_WEIGHT: '短斤少两', TEMP_ABUSE: '温度失控', OTHER: '其他' },
   AlertType: {
     TEMP_EXCEEDED: '到货温度超标', MIXED_LOAD: '混批混装', CUSTOMER_CHANGED: '临时改客户',
@@ -22,7 +28,8 @@ export const ENUMS = {
   },
   Stage: {
     ARRIVAL: '到货登记', INSPECTION: '质检验收', SORTING: '分拣处理', PUT_IN: '入库上架',
-    TRANSFER: '转仓移库', LOSS: '报损', OUTBOUND: '出库发运', COMPLAINT: '客户投诉', SETTLEMENT: '财务结算'
+    TRANSFER: '转仓移库', LOSS: '报损', OUTBOUND: '出库发运', COMPLAINT: '客户投诉',
+    LOSS_REVIEW: '损耗复核', SETTLEMENT: '财务结算'
   },
   BillItemType: {
     SALE: '销售收入', STORAGE_FEE: '仓储费', SORT_FEE: '分拣费', LABOR_FEE: '分拣工时费',

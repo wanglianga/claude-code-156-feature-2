@@ -1,21 +1,39 @@
 package com.county.coldchain.config;
 
+import com.county.coldchain.domain.DomainEnums.BatchStatus;
+import com.county.coldchain.domain.DomainEnums.Decision;
+import com.county.coldchain.domain.DomainEnums.Grade;
 import com.county.coldchain.domain.DomainEnums.LockStatus;
 import com.county.coldchain.domain.DomainEnums.OwnerType;
+import com.county.coldchain.domain.DomainEnums.ReviewStatus;
 import com.county.coldchain.domain.DomainEnums.UserRole;
 import com.county.coldchain.domain.DomainEnums.ZoneType;
+import com.county.coldchain.domain.entity.Batch;
 import com.county.coldchain.domain.entity.Category;
+import com.county.coldchain.domain.entity.CrateHandlingRecord;
 import com.county.coldchain.domain.entity.Customer;
+import com.county.coldchain.domain.entity.Inspection;
 import com.county.coldchain.domain.entity.Location;
+import com.county.coldchain.domain.entity.LossReview;
 import com.county.coldchain.domain.entity.Owner;
 import com.county.coldchain.domain.entity.PriceLock;
+import com.county.coldchain.domain.entity.SortItem;
+import com.county.coldchain.domain.entity.SortingRecord;
+import com.county.coldchain.domain.entity.StockLot;
 import com.county.coldchain.domain.entity.SysUser;
 import com.county.coldchain.domain.entity.Zone;
+import com.county.coldchain.repo.BatchRepository;
 import com.county.coldchain.repo.CategoryRepository;
+import com.county.coldchain.repo.CrateHandlingRepository;
 import com.county.coldchain.repo.CustomerRepository;
+import com.county.coldchain.repo.InspectionRepository;
 import com.county.coldchain.repo.LocationRepository;
+import com.county.coldchain.repo.LossReviewRepository;
 import com.county.coldchain.repo.OwnerRepository;
 import com.county.coldchain.repo.PriceLockRepository;
+import com.county.coldchain.repo.SortItemRepository;
+import com.county.coldchain.repo.SortingRecordRepository;
+import com.county.coldchain.repo.StockLotRepository;
 import com.county.coldchain.repo.SysUserRepository;
 import com.county.coldchain.repo.ZoneRepository;
 import com.county.coldchain.security.AuthService;
@@ -26,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /** 种子数据：测试账号、货主客户、六大品类温区阈值、三个温区库位、一条锁价协议。 */
 @Component
@@ -39,6 +58,13 @@ public class DataSeeder implements CommandLineRunner {
     private final ZoneRepository zoneRepository;
     private final LocationRepository locationRepository;
     private final PriceLockRepository priceLockRepository;
+    private final BatchRepository batchRepository;
+    private final InspectionRepository inspectionRepository;
+    private final SortingRecordRepository sortingRepository;
+    private final SortItemRepository sortItemRepository;
+    private final StockLotRepository stockLotRepository;
+    private final CrateHandlingRepository crateHandlingRepository;
+    private final LossReviewRepository lossReviewRepository;
 
     @Override
     @Transactional
@@ -51,6 +77,7 @@ public class DataSeeder implements CommandLineRunner {
         seedCategories();
         seedZones();
         seedLocks();
+        seedDisputeReviewDemo();
     }
 
     private void seedUsers() {
@@ -206,5 +233,138 @@ public class DataSeeder implements CommandLineRunner {
         lock.setStatus(LockStatus.ACTIVE);
         lock.setRemark("葡萄产季锁价协议，县城鲜果批发行锁定 800kg");
         priceLockRepository.save(lock);
+    }
+
+    /**
+     * 演示用"分拣损耗争议待复核"草莓批次：
+     * 平台证据（原始入库重量、分拣视频、坏果照片、等级划分、质检员签名）齐备，
+     * 两个周转筐分别呈现装卸挤压与分拣台长时间暴露线索，复核员登录后可直接练习复核流程。
+     */
+    private void seedDisputeReviewDemo() {
+        Batch b = new Batch();
+        b.setBatchNo("B-SEED-REVIEW-01");
+        b.setOwnerId(ownerRepository.findAll().get(1).getId()); // 青山草莓合作社
+        b.setCategoryId(categoryRepository.findAll().get(1).getId()); // 草莓
+        b.setOrigin("青山乡莓香村·教学示范棚");
+        b.setProductionDate(LocalDate.now().minusDays(1));
+        b.setGrossWeight(new BigDecimal("122"));
+        b.setTareWeight(new BigDecimal("2"));
+        b.setNetWeight(new BigDecimal("120"));
+        b.setArrivalTemp(new BigDecimal("3.5"));
+        b.setPackaging("纸盒+周转筐");
+        b.setVehicleNo("鲁Q·D6688");
+        b.setMixedLoad(false);
+        b.setPlannedCustomerId(customerRepository.findAll().get(1).getId());
+        com.county.coldchain.domain.entity.QuarantineInfo q =
+                new com.county.coldchain.domain.entity.QuarantineInfo();
+        q.setCertificateNo("QY-CM-SEED-01");
+        q.setIssuingOrg("县农检中心");
+        q.setIssueDate(LocalDate.now().toString());
+        q.setVerified(true);
+        b.setQuarantine(q);
+        b.setSettleMethod(com.county.coldchain.domain.DomainEnums.SettleMethod.CONSIGN);
+        b.setStatus(BatchStatus.INSPECTED);
+        b.setAcceptedWeight(new BigDecimal("110"));
+        b.setArrivedAt(LocalDateTime.now().minusHours(6));
+        batchRepository.save(b);
+
+        Inspection in = new Inspection();
+        in.setBatchId(b.getId());
+        in.setInspector("李检");
+        in.setInspectedAt(LocalDateTime.now().minusHours(5));
+        in.setAppearanceScore(86);
+        in.setMaturityScore(84);
+        in.setRotRate(new BigDecimal("0.03"));
+        in.setMoistureRate(new BigDecimal("0.90"));
+        in.setMeasuredTemp(new BigDecimal("3.2"));
+        in.setCertificateOk(true);
+        in.setMixedConfirmed(true);
+        in.setDecision(Decision.SORT);
+        in.setSignature("李检（电子签名）");
+        in.setRemark("教学演示：验收腐损率 3%，转分拣");
+        inspectionRepository.save(in);
+
+        SortingRecord s = new SortingRecord();
+        s.setSortingNo("S-SEED-REVIEW-01");
+        s.setBatchId(b.getId());
+        s.setSorter("孙姐");
+        s.setSortedAt(LocalDateTime.now().minusHours(4));
+        s.setInputWeight(new BigDecimal("120"));
+        s.setOutputWeight(new BigDecimal("110"));
+        s.setLossWeight(new BigDecimal("10"));
+        s.setLossRate(new BigDecimal("0.0833"));
+        s.setLaborMinutes(45);
+        s.setDisputed(true);
+        s.setDisputeResolved(false);
+        s.setDisputeNote("货主主张草莓运输轻微碰伤属正常，损耗应≤3%，不认可 8.3%");
+        s.setSortStation("1号分拣台");
+        s.setSortVideoUrl("VIDEO-SEED-SORT-01");
+        s.setBadFruitPhotos("PHOTO-SEED-BAD-01,PHOTO-SEED-BAD-02");
+        s.setRemark("教学演示：坏果疑似集中在 K-21/K-25 两个周转筐");
+        sortingRepository.save(s);
+
+        sortItem(s, Grade.A, new BigDecimal("80"), new BigDecimal("25.0"), 5, "CHILLED", b.getId());
+        sortItem(s, Grade.B, new BigDecimal("30"), new BigDecimal("15.0"), 3, "CHILLED", b.getId());
+
+        // K-21：底层筐、码放 7 层高，到台 8 分钟即开拣 → 装卸挤压线索
+        crate(b.getId(), s.getId(), "K-21", 1, 7, "1号分拣台", 300, 250, 60, 52);
+        // K-25：到台后 45 分钟才开拣 → 分拣台长时间暴露线索
+        crate(b.getId(), s.getId(), "K-25", 4, 4, "1号分拣台", 200, 150, 120, 75);
+
+        LossReview r = new LossReview();
+        r.setReviewNo("R-SEED-OPEN-01");
+        r.setBatchId(b.getId());
+        r.setSortingId(s.getId());
+        r.setOwnerId(b.getOwnerId());
+        r.setOwnerClaimLossRate(new BigDecimal("0.03"));
+        r.setOwnerClaimNote("货主教学演示主张：合理损耗不超过 3%");
+        r.setReviewer("周复审");
+        r.setStartedAt(LocalDateTime.now().minusHours(3));
+        r.setStatus(ReviewStatus.OPEN);
+        lossReviewRepository.save(r);
+    }
+
+    private void sortItem(SortingRecord s, Grade grade, BigDecimal weight, BigDecimal price,
+                          int shelfDays, String zoneCode, Long batchId) {
+        SortItem si = new SortItem();
+        si.setSortingId(s.getId());
+        si.setGrade(grade);
+        si.setWeight(weight);
+        si.setUnitPrice(price);
+        si.setShelfLifeDays(shelfDays);
+        si.setZoneCode(zoneCode);
+        sortItemRepository.save(si);
+
+        StockLot lot = new StockLot();
+        lot.setLotNo("L-SEED-" + grade.name());
+        lot.setBatchId(batchId);
+        lot.setGrade(grade);
+        lot.setInitialWeight(weight);
+        lot.setCurrentWeight(weight);
+        lot.setUnitPrice(price);
+        lot.setShelfLifeDays(shelfDays);
+        lot.setInAt(LocalDateTime.now().minusHours(4));
+        lot.setStatus("PENDING");
+        stockLotRepository.save(lot);
+    }
+
+    private void crate(Long batchId, Long sortingId, String crateNo, int layer, int height,
+                       String station, int arrivedAgoMin, int unloadedAgoMin,
+                       int reachedAgoMin, int startedAgoMin) {
+        LocalDateTime now = LocalDateTime.now();
+        CrateHandlingRecord h = new CrateHandlingRecord();
+        h.setBatchId(batchId);
+        h.setSortingId(sortingId);
+        h.setCrateNo(crateNo);
+        h.setStackLayer(layer);
+        h.setStackHeight(height);
+        h.setVehicleNo("鲁Q·D6688");
+        h.setSortStation(station);
+        h.setArrivedAt(now.minusMinutes(arrivedAgoMin));
+        h.setUnloadedAt(now.minusMinutes(unloadedAgoMin));
+        h.setReachedStationAt(now.minusMinutes(reachedAgoMin));
+        h.setSortingStartedAt(now.minusMinutes(startedAgoMin));
+        h.setHandler("装卸班·老吴");
+        crateHandlingRepository.save(h);
     }
 }

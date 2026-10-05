@@ -66,6 +66,8 @@ public class InspectionService {
         in.setCertificateOk(Boolean.TRUE.equals(req.getCertificateOk()));
         in.setMixedConfirmed(Boolean.TRUE.equals(req.getMixedConfirmed()));
         in.setDecision(decision);
+        in.setSignature(req.getSignature() == null || req.getSignature().isBlank()
+                ? in.getInspector() : req.getSignature());
         in.setRemark(req.getRemark());
 
         BigDecimal net = batch.getNetWeight();

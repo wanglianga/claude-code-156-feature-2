@@ -5,8 +5,11 @@ import com.county.coldchain.domain.entity.Batch;
 import com.county.coldchain.domain.entity.Bill;
 import com.county.coldchain.domain.entity.Category;
 import com.county.coldchain.domain.entity.Complaint;
+import com.county.coldchain.domain.entity.CrateEvidence;
 import com.county.coldchain.domain.entity.Customer;
+import com.county.coldchain.domain.entity.CustomerCompensation;
 import com.county.coldchain.domain.entity.Inspection;
+import com.county.coldchain.domain.entity.LossReview;
 import com.county.coldchain.domain.entity.OutboundOrder;
 import com.county.coldchain.domain.entity.Owner;
 import com.county.coldchain.domain.entity.SortItem;
@@ -19,8 +22,11 @@ import com.county.coldchain.repo.BatchRepository;
 import com.county.coldchain.repo.BillRepository;
 import com.county.coldchain.repo.CategoryRepository;
 import com.county.coldchain.repo.ComplaintRepository;
+import com.county.coldchain.repo.CrateEvidenceRepository;
+import com.county.coldchain.repo.CustomerCompensationRepository;
 import com.county.coldchain.repo.CustomerRepository;
 import com.county.coldchain.repo.InspectionRepository;
+import com.county.coldchain.repo.LossReviewRepository;
 import com.county.coldchain.repo.OutboundOrderRepository;
 import com.county.coldchain.repo.OwnerRepository;
 import com.county.coldchain.repo.SortItemRepository;
@@ -54,6 +60,9 @@ public class TraceQueryService {
     private final StockMoveRepository moveRepository;
     private final OutboundOrderRepository outboundRepository;
     private final ComplaintRepository complaintRepository;
+    private final LossReviewRepository reviewRepository;
+    private final CrateEvidenceRepository crateEvidenceRepository;
+    private final CustomerCompensationRepository compensationRepository;
     private final AlertRepository alertRepository;
     private final BillRepository billRepository;
 
@@ -97,6 +106,15 @@ public class TraceQueryService {
 
         List<Complaint> complaints = complaintRepository.findByBatchIdOrderByCreatedAtDesc(batchId);
         m.put("complaints", complaints);
+
+        List<LossReview> reviews = reviewRepository.findByBatchIdOrderByCreatedAtDesc(batchId);
+        m.put("lossReviews", reviews);
+        List<CrateEvidence> crateEvidences = new java.util.ArrayList<>();
+        for (LossReview rv : reviews) {
+            crateEvidences.addAll(crateEvidenceRepository.findByReviewIdOrderByBadFruitWeightDesc(rv.getId()));
+        }
+        m.put("crateEvidences", crateEvidences);
+        m.put("compensations", compensationRepository.findByBatchIdOrderByCreatedAtDesc(batchId));
 
         List<Alert> alerts = alertRepository.findByBatchIdOrderByCreatedAtDesc(batchId);
         m.put("alerts", alerts);

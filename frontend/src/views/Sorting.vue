@@ -52,6 +52,23 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-row :gutter="10">
+              <el-col :span="8">
+                <el-form-item label="分拣工位">
+                  <el-input v-model="form.sortStation" placeholder="如 1号分拣台" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="分拣视频">
+                  <el-input v-model="form.sortVideoUrl" placeholder="视频URL/编号" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="坏果照片">
+                  <el-input v-model="form.badFruitPhotos" placeholder="URL/编号，逗号分隔" />
+                </el-form-item>
+              </el-col>
+            </el-row>
 
             <el-table :data="form.items" size="small" border>
               <el-table-column label="等级" width="130">
@@ -130,10 +147,13 @@
                 <el-tag v-else type="info" size="small">无争议</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="100">
+            <el-table-column label="操作" width="170">
               <template #default="{ row }">
-                <el-button v-if="row.disputed && !row.disputeResolved" link type="primary"
-                           @click="openResolve(row)">裁定</el-button>
+                <template v-if="row.disputed && !row.disputeResolved">
+                  <el-button link type="primary" @click="goReview(row)">争议复核</el-button>
+                  <el-button link type="warning" @click="openResolve(row)">直接裁定</el-button>
+                </template>
+                <el-tag v-else-if="row.reviewId" size="small" type="success">已复核</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -171,8 +191,11 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+
+const router = useRouter()
 
 const sortingBatches = ref([])
 const categories = ref([])
@@ -187,7 +210,8 @@ const defaultItems = () => ([
 ])
 const form = reactive({
   sorter: '', inputWeight: 0, laborMinutes: 0, disputed: false,
-  disputeNote: '', remark: '', items: defaultItems()
+  disputeNote: '', remark: '', sortStation: '', sortVideoUrl: '', badFruitPhotos: '',
+  items: defaultItems()
 })
 
 const outputTotal = computed(() =>
@@ -245,6 +269,9 @@ async function submit() {
       disputed: form.disputed,
       disputeNote: form.disputeNote,
       remark: form.remark,
+      sortStation: form.sortStation,
+      sortVideoUrl: form.sortVideoUrl,
+      badFruitPhotos: form.badFruitPhotos,
       items
     })
     ElMessage.success('分拣完成，已生成待上架货位批次')
@@ -266,6 +293,11 @@ function openResolve(row) {
   resolveForm.adjudicatedLoss = Number(row.lossWeight)
   resolveForm.note = ''
   resolveVisible.value = true
+}
+
+/** 跳转争议复核工作台（货主就该争议分拣单发起正式复核） */
+function goReview(row) {
+  router.push({ path: '/loss-reviews', query: { sortingId: row.id } })
 }
 
 async function submitResolve() {

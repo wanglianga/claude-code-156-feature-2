@@ -16,6 +16,12 @@ public class SortingRequest {
     private Integer laborMinutes;
     private Boolean disputed;
     private String disputeNote;
+    /** 分拣视频 URL/编号（争议复核平台证据） */
+    private String sortVideoUrl;
+    /** 坏果照片 URL/编号，多个以逗号分隔 */
+    private String badFruitPhotos;
+    /** 分拣工位（如 1号分拣台） */
+    private String sortStation;
     private String remark;
     @NotNull
     private List<Item> items;

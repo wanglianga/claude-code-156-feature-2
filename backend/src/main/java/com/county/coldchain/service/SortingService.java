@@ -94,6 +94,9 @@ public class SortingService {
         rec.setDisputed(Boolean.TRUE.equals(req.getDisputed()));
         rec.setDisputeNote(req.getDisputeNote());
         rec.setDisputeResolved(!Boolean.TRUE.equals(req.getDisputed()));
+        rec.setSortVideoUrl(req.getSortVideoUrl());
+        rec.setBadFruitPhotos(req.getBadFruitPhotos());
+        rec.setSortStation(req.getSortStation());
         rec.setRemark(req.getRemark());
         rec = sortingRepository.save(rec);
 

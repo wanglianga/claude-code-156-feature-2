@@ -11,6 +11,8 @@ import com.county.coldchain.domain.entity.Bill;
 import com.county.coldchain.domain.entity.BillItem;
 import com.county.coldchain.domain.entity.Category;
 import com.county.coldchain.domain.entity.Complaint;
+import com.county.coldchain.domain.entity.CustomerCompensation;
+import com.county.coldchain.domain.entity.LossReview;
 import com.county.coldchain.domain.entity.OutboundItem;
 import com.county.coldchain.domain.entity.OutboundOrder;
 import com.county.coldchain.domain.entity.Owner;
@@ -24,6 +26,8 @@ import com.county.coldchain.repo.BillItemRepository;
 import com.county.coldchain.repo.BillRepository;
 import com.county.coldchain.repo.CategoryRepository;
 import com.county.coldchain.repo.ComplaintRepository;
+import com.county.coldchain.repo.CustomerCompensationRepository;
+import com.county.coldchain.repo.LossReviewRepository;
 import com.county.coldchain.repo.OutboundItemRepository;
 import com.county.coldchain.repo.OutboundOrderRepository;
 import com.county.coldchain.repo.OwnerRepository;
@@ -68,6 +72,8 @@ public class BillingService {
     private final OutboundOrderRepository outboundRepository;
     private final OutboundItemRepository outboundItemRepository;
     private final ComplaintRepository complaintRepository;
+    private final LossReviewRepository reviewRepository;
+    private final CustomerCompensationRepository compensationRepository;
     private final AdvanceLedgerRepository advanceRepository;
     private final TraceService traceService;
 
@@ -193,9 +199,42 @@ public class BillingService {
                 lossComp = lossComp.add(comp);
             }
         } else {
-            // 分拣损耗争议中冷库承担的差额，按分拣产出均价补偿货主
+            // 分拣损耗：优先读取争议复核结论（到货质量→货主承担；分拣操作不当→冷库赔付），
+            // 无复核单的沿用旧版直接裁定口径
             for (SortingRecord rec : sortingRepository.findByBatchIdOrderBySortedAtAsc(batch.getId())) {
-                if (Boolean.TRUE.equals(rec.getDisputed()) && Boolean.TRUE.equals(rec.getDisputeResolved())
+                LossReview review = rec.getReviewId() == null ? null
+                        : reviewRepository.findById(rec.getReviewId()).orElse(null);
+                if (review != null) {
+                    BigDecimal warehouseBorne = nz(review.getWarehouseBorneWeight());
+                    BigDecimal ownerBorne = nz(review.getReviewedLossWeight());
+                    if (review.getResponsibility() == Responsibility.WAREHOUSE && warehouseBorne.signum() > 0) {
+                        // 分拣操作不当（装卸挤压/分拣台暴露）→ 冷库按分拣均价赔付货主
+                        BigDecimal comp = warehouseBorne.multiply(avg).setScale(2, RoundingMode.HALF_UP);
+                        addItem(bill, BillItemType.LOSS_DEDUCT,
+                                "争议复核 " + review.getReviewNo() + "·冷库赔付（"
+                                        + review.getLossCause().desc + "，" + warehouseBorne + "kg × " + avg
+                                        + " 元/kg；责任班组：" + sortTeamOf(review) + "）",
+                                warehouseBorne, avg, comp, null);
+                        lossComp = lossComp.add(comp);
+                        // 回写赔付记录已入结算单
+                        compensationRepository.findByReviewId(review.getId()).forEach(c -> {
+                            c.setBillWritten(true);
+                            compensationRepository.save(c);
+                        });
+                    } else if (warehouseBorne.signum() > 0) {
+                        // 货主责任但重新抽样确认部分仍可售：只做库存回补，冷库不赔付
+                        addItem(bill, BillItemType.LOSS_DEDUCT,
+                                "争议复核 " + review.getReviewNo() + "·抽样回补可售（"
+                                        + warehouseBorne + "kg 仍可售，不计损耗、不赔付）",
+                                warehouseBorne, null, BigDecimal.ZERO, null);
+                    }
+                    if (ownerBorne.signum() > 0) {
+                        addItem(bill, BillItemType.LOSS_DEDUCT,
+                                "争议复核 " + review.getReviewNo() + "·货主承担损耗（"
+                                        + review.getLossCause().desc + "，" + ownerBorne + "kg，不计价）",
+                                ownerBorne, null, BigDecimal.ZERO, null);
+                    }
+                } else if (Boolean.TRUE.equals(rec.getDisputed()) && Boolean.TRUE.equals(rec.getDisputeResolved())
                         && rec.getAdjudicatedLossWeight() != null) {
                     BigDecimal warehouseBorne = rec.getLossWeight().subtract(rec.getAdjudicatedLossWeight());
                     if (warehouseBorne.signum() > 0) {
@@ -249,6 +288,16 @@ public class BillingService {
                         "投诉 " + c.getComplaintNo() + " 责任方：" + c.getResponsibility().desc
                                 + "（冷库对客户赔付，不扣货主）", null, null, BigDecimal.ZERO, null);
             }
+        }
+
+        // 6.1 争议复核冷库赔付台账（冷库责任部分已计入上方补偿；此处留痕对货主/客户赔付信息）
+        for (CustomerCompensation cc : compensationRepository.findByBatchIdOrderByCreatedAtDesc(batch.getId())) {
+            addItem(bill, BillItemType.LOSS_DEDUCT,
+                    "客户赔付台账 " + cc.getCompensationNo() + "（" + cc.getLossCause().desc
+                            + "，赔付 " + cc.getWeight() + "kg × " + cc.getUnitPrice() + " = "
+                            + cc.getAmount() + " 元，责任班组：" + cc.getSortTeam()
+                            + (cc.getCustomerId() == null ? "，受偿方：货主" : "，已传导客户") + "）",
+                    cc.getWeight(), cc.getUnitPrice(), BigDecimal.ZERO, null);
         }
 
         // 7) 退货重量信息
@@ -396,8 +445,16 @@ public class BillingService {
         return (int) Math.max(0, Duration.between(a, b).toDays());
     }
 
-    private BigDecimal avgAcceptedPrice(List<StockLot> lots, Category cat) {
-        BigDecimal w = BigDecimal.ZERO;
+    /** 争议复核关联的责任分拣班组（取自赔付记录）。 */
+    private String sortTeamOf(LossReview review) {
+        return compensationRepository.findByReviewId(review.getId()).stream()
+                .map(CustomerCompensation::getSortTeam)
+                .filter(t -> t != null && !t.isBlank())
+                .findFirst()
+                .orElse("分拣班组");
+    }
+
+    private BigDecimal avgAcceptedPrice(List<StockLot> lots, Category cat) {        BigDecimal w = BigDecimal.ZERO;
         BigDecimal v = BigDecimal.ZERO;
         for (StockLot lot : lots) {
             BigDecimal p = lot.getUnitPrice() == null ? cat.getDefaultPriceB() : lot.getUnitPrice();
