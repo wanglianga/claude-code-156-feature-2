@@ -27,8 +27,25 @@ export const ENUMS = {
   BillItemType: {
     SALE: '销售收入', STORAGE_FEE: '仓储费', SORT_FEE: '分拣费', LABOR_FEE: '分拣工时费',
     LOSS_DEDUCT: '损耗补偿/扣款', COMPLAINT_DEDUCT: '投诉赔付扣款', ADVANCE_DEDUCT: '预付款抵扣',
-    RETURN_DEDUCT: '退货扣款', REMAIN_VALUE: '期末库存货值'
-  }
+    RETURN_DEDUCT: '退货扣款', REMAIN_VALUE: '期末库存货值',
+    REVIEW_COMPENSATION: '复核·冷库赔付/可售回补', REVIEW_OWNER_LOSS: '复核·货主自担损耗',
+    CUSTOMER_COMPENSATION: '客户赔付记录（冷库对客）'
+  },
+  ReviewStatus: { OPEN: '待复核', SAMPLING: '重新抽样中', CONFIRMED: '已出具结论', CANCELLED: '已撤销' },
+  ReviewConclusion: {
+    OWNER_QUALITY: '到货质量差·货主承担',
+    LOADING_SQUEEZE: '装卸挤压·冷库赔付',
+    SORT_EXPOSURE: '分拣台长时间暴露·冷库赔付',
+    MIXED: '多方因素·分摊赔付'
+  },
+  BasketCause: {
+    ARRIVAL_QUALITY: '来货质量差', LOADING_SQUEEZE: '装卸挤压',
+    SORT_EXPOSURE: '分拣台长时间暴露', INCLUSIVE: '混合原因'
+  },
+  AssessmentTarget: {
+    QC_INSPECTOR: '质检员', SORT_TEAM: '分拣班组', LOADING_TEAM: '装卸班组'
+  },
+  AssessmentResult: { DEDUCT: '扣分/扣款', NEUTRAL: '无责记录', BONUS: '加分/申诉撤销' }
 }
 
 export const STATUS_TAG = {

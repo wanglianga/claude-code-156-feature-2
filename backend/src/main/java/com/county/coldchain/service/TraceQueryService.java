@@ -6,10 +6,14 @@ import com.county.coldchain.domain.entity.Bill;
 import com.county.coldchain.domain.entity.Category;
 import com.county.coldchain.domain.entity.Complaint;
 import com.county.coldchain.domain.entity.Customer;
+import com.county.coldchain.domain.entity.CustomerCompensation;
 import com.county.coldchain.domain.entity.Inspection;
+import com.county.coldchain.domain.entity.LossReview;
 import com.county.coldchain.domain.entity.OutboundOrder;
 import com.county.coldchain.domain.entity.Owner;
+import com.county.coldchain.domain.entity.ReviewBasketClue;
 import com.county.coldchain.domain.entity.SortItem;
+import com.county.coldchain.domain.entity.SortingAssessment;
 import com.county.coldchain.domain.entity.SortingRecord;
 import com.county.coldchain.domain.entity.StockLot;
 import com.county.coldchain.domain.entity.StockMove;
@@ -19,11 +23,15 @@ import com.county.coldchain.repo.BatchRepository;
 import com.county.coldchain.repo.BillRepository;
 import com.county.coldchain.repo.CategoryRepository;
 import com.county.coldchain.repo.ComplaintRepository;
+import com.county.coldchain.repo.CustomerCompensationRepository;
 import com.county.coldchain.repo.CustomerRepository;
 import com.county.coldchain.repo.InspectionRepository;
+import com.county.coldchain.repo.LossReviewRepository;
 import com.county.coldchain.repo.OutboundOrderRepository;
 import com.county.coldchain.repo.OwnerRepository;
+import com.county.coldchain.repo.ReviewBasketClueRepository;
 import com.county.coldchain.repo.SortItemRepository;
+import com.county.coldchain.repo.SortingAssessmentRepository;
 import com.county.coldchain.repo.SortingRecordRepository;
 import com.county.coldchain.repo.StockLotRepository;
 import com.county.coldchain.repo.StockMoveRepository;
@@ -56,6 +64,10 @@ public class TraceQueryService {
     private final ComplaintRepository complaintRepository;
     private final AlertRepository alertRepository;
     private final BillRepository billRepository;
+    private final LossReviewRepository lossReviewRepository;
+    private final ReviewBasketClueRepository basketClueRepository;
+    private final SortingAssessmentRepository assessmentRepository;
+    private final CustomerCompensationRepository customerCompensationRepository;
 
     @Transactional(readOnly = true)
     public Map<String, Object> chain(Long batchId) {
@@ -100,6 +112,18 @@ public class TraceQueryService {
 
         List<Alert> alerts = alertRepository.findByBatchIdOrderByCreatedAtDesc(batchId);
         m.put("alerts", alerts);
+
+        // 分拣损耗争议复核：证据快照、筐号线索、责任结论、考核、客户赔付
+        List<Map<String, Object>> reviews = new java.util.ArrayList<>();
+        for (LossReview rv : lossReviewRepository.findByBatchIdOrderByCreatedAtDesc(batchId)) {
+            Map<String, Object> rm = new LinkedHashMap<>();
+            rm.put("review", rv);
+            rm.put("baskets", basketClueRepository.findByReviewIdOrderBySortStationAtAsc(rv.getId()));
+            rm.put("assessments", assessmentRepository.findByReviewIdOrderByIdAsc(rv.getId()));
+            rm.put("compensations", customerCompensationRepository.findByReviewIdOrderByCreatedAtDesc(rv.getId()));
+            reviews.add(rm);
+        }
+        m.put("lossReviews", reviews);
 
         List<Bill> bills = billRepository.findByBatchIdOrderByCreatedAtDesc(batchId);
         m.put("bills", bills);

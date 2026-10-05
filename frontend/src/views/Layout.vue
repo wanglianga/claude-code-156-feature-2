@@ -22,6 +22,9 @@
         <el-menu-item index="/sorting">
           <el-icon><ScaleToOriginal /></el-icon><span>分拣处理</span>
         </el-menu-item>
+        <el-menu-item index="/reviews">
+          <el-icon><DocumentChecked /></el-icon><span>损耗复核</span>
+        </el-menu-item>
         <el-menu-item index="/stock">
           <el-icon><Box /></el-icon><span>库位温区</span>
         </el-menu-item>

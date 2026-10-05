@@ -4,6 +4,7 @@ import com.county.coldchain.domain.DomainEnums.BillItemType;
 import com.county.coldchain.domain.DomainEnums.BillStatus;
 import com.county.coldchain.domain.DomainEnums.MoveReason;
 import com.county.coldchain.domain.DomainEnums.Responsibility;
+import com.county.coldchain.domain.DomainEnums.ReviewStatus;
 import com.county.coldchain.domain.DomainEnums.Stage;
 import com.county.coldchain.domain.entity.AdvanceLedger;
 import com.county.coldchain.domain.entity.Batch;
@@ -11,6 +12,8 @@ import com.county.coldchain.domain.entity.Bill;
 import com.county.coldchain.domain.entity.BillItem;
 import com.county.coldchain.domain.entity.Category;
 import com.county.coldchain.domain.entity.Complaint;
+import com.county.coldchain.domain.entity.CustomerCompensation;
+import com.county.coldchain.domain.entity.LossReview;
 import com.county.coldchain.domain.entity.OutboundItem;
 import com.county.coldchain.domain.entity.OutboundOrder;
 import com.county.coldchain.domain.entity.Owner;
@@ -24,6 +27,8 @@ import com.county.coldchain.repo.BillItemRepository;
 import com.county.coldchain.repo.BillRepository;
 import com.county.coldchain.repo.CategoryRepository;
 import com.county.coldchain.repo.ComplaintRepository;
+import com.county.coldchain.repo.CustomerCompensationRepository;
+import com.county.coldchain.repo.LossReviewRepository;
 import com.county.coldchain.repo.OutboundItemRepository;
 import com.county.coldchain.repo.OutboundOrderRepository;
 import com.county.coldchain.repo.OwnerRepository;
@@ -68,7 +73,9 @@ public class BillingService {
     private final OutboundOrderRepository outboundRepository;
     private final OutboundItemRepository outboundItemRepository;
     private final ComplaintRepository complaintRepository;
+    private final CustomerCompensationRepository customerCompensationRepository;
     private final AdvanceLedgerRepository advanceRepository;
+    private final LossReviewRepository lossReviewRepository;
     private final TraceService traceService;
 
     @Value("${app.billing.labor-rate-per-minute:0.6}")
@@ -193,8 +200,46 @@ public class BillingService {
                 lossComp = lossComp.add(comp);
             }
         } else {
-            // 分拣损耗争议中冷库承担的差额，按分拣产出均价补偿货主
+            // 已出具复核结论的分拣单：按复核单口径赔付（货主承担/冷库赔付），不再走旧争议差额逻辑
+            java.util.Map<Long, List<LossReview>> reviewMap = new HashMap<>();
+            for (LossReview rv : lossReviewRepository.findAll()) {
+                if (rv.getStatus() == ReviewStatus.CONFIRMED && rv.getBatchId().equals(batch.getId())) {
+                    reviewMap.computeIfAbsent(rv.getSortingId(), k -> new java.util.ArrayList<>()).add(rv);
+                }
+            }
             for (SortingRecord rec : sortingRepository.findByBatchIdOrderBySortedAtAsc(batch.getId())) {
+                List<LossReview> reviews = reviewMap.getOrDefault(rec.getId(), java.util.List.of());
+                if (!reviews.isEmpty()) {
+                    for (LossReview rv : reviews) {
+                        rv.setBillId(bill.getId());
+                        lossReviewRepository.save(rv);
+                        if (rv.getWarehouseBorneWeight().signum() > 0) {
+                            BigDecimal price = rv.getCompensatePrice() == null ? avg : rv.getCompensatePrice();
+                            BigDecimal comp = rv.getWarehouseBorneWeight().multiply(price)
+                                    .setScale(2, RoundingMode.HALF_UP);
+                            addItem(bill, BillItemType.REVIEW_COMPENSATION,
+                                    "分拣损耗复核 " + rv.getReviewNo() + "·冷库赔付（"
+                                            + rv.getConclusion().desc + "，" + rv.getWarehouseBorneWeight()
+                                            + "kg × " + price + " 元/kg）",
+                                    rv.getWarehouseBorneWeight(), price, comp, null);
+                            lossComp = lossComp.add(comp);
+                        }
+                        if (rv.getOwnerBorneWeight().signum() > 0) {
+                            addItem(bill, BillItemType.REVIEW_OWNER_LOSS,
+                                    "分拣损耗复核 " + rv.getReviewNo() + "·到货质量货主自担（不计价，"
+                                            + rv.getOwnerBorneWeight() + "kg）",
+                                    rv.getOwnerBorneWeight(), null, BigDecimal.ZERO, null);
+                        }
+                        if (rv.getSalableAdjustWeight().signum() > 0) {
+                            addItem(bill, BillItemType.REVIEW_COMPENSATION,
+                                    "分拣损耗复核 " + rv.getReviewNo() + "·可售重量回补 "
+                                            + rv.getSalableAdjustWeight() + "kg",
+                                    rv.getSalableAdjustWeight(), null, BigDecimal.ZERO, null);
+                        }
+                    }
+                    continue;
+                }
+                // 无复核单的分拣损耗争议中冷库承担的差额，按分拣产出均价补偿货主
                 if (Boolean.TRUE.equals(rec.getDisputed()) && Boolean.TRUE.equals(rec.getDisputeResolved())
                         && rec.getAdjudicatedLossWeight() != null) {
                     BigDecimal warehouseBorne = rec.getLossWeight().subtract(rec.getAdjudicatedLossWeight());
@@ -251,13 +296,21 @@ public class BillingService {
             }
         }
 
-        // 7) 退货重量信息
+        // 7) 复核环节主动登记的客户赔付记录：冷库对客赔付，不扣货主，仅在账单备注
+        for (CustomerCompensation cc : customerCompensationRepository.findByBatchIdOrderByCreatedAtDesc(batch.getId())) {
+            addItem(bill, BillItemType.CUSTOMER_COMPENSATION,
+                    "复核客户赔付 " + cc.getCompensationNo() + "（冷库对客赔付，不扣货主，"
+                            + cc.getAmount() + " 元，状态：" + cc.getStatus() + "）", null, null,
+                    BigDecimal.ZERO, null);
+        }
+
+        // 8) 退货重量信息
         if (nz(batch.getReturnedWeight()).signum() > 0) {
             addItem(bill, BillItemType.RETURN_DEDUCT,
                     "质检/退货重量（不计仓储分拣费）", batch.getReturnedWeight(), null, BigDecimal.ZERO, null);
         }
 
-        // 8) 预付款抵扣（草稿先按可用余额预占，确认时可改）
+        // 9) 预付款抵扣（草稿先按可用余额预占，确认时可改）
         Owner owner = ownerRepository.findById(batch.getOwnerId()).orElseThrow();
         BigDecimal availableAdvance = owner.getAdvanceBalance() == null ? BigDecimal.ZERO : owner.getAdvanceBalance();
         BigDecimal deduct = req.getAdvanceDeduct() == null ? availableAdvance : req.getAdvanceDeduct();

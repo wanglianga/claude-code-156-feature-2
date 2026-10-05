@@ -43,6 +43,57 @@
       </el-card>
 
       <el-row :gutter="12">
+        <el-col :span="24">
+          <el-card shadow="never" style="margin-bottom:12px">
+            <div class="card-title">分拣损耗争议复核（证据 / 抽样 / 筐号串联 / 结论 / 考核 / 客户赔付）</div>
+            <el-empty v-if="!data.lossReviews.length" description="无损耗复核" :image-size="50" />
+            <template v-for="g in data.lossReviews" :key="g.review.id">
+              <el-descriptions :column="2" size="small" border style="margin-bottom:8px">
+                <el-descriptions-item label="复核单号">{{ g.review.reviewNo }}</el-descriptions-item>
+                <el-descriptions-item label="状态">{{ $dict('ReviewStatus', g.review.status) }}</el-descriptions-item>
+                <el-descriptions-item label="原重/登记损耗">
+                  {{ g.review.originalNetWeight }}kg / {{ g.review.sortingLossWeight }}kg
+                </el-descriptions-item>
+                <el-descriptions-item label="抽样坏果率">
+                  {{ g.review.sampleBadRate ? (g.review.sampleBadRate*100).toFixed(1)+'%' : '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="结论" :span="2">
+                  <el-tag v-if="g.review.conclusion" size="small"
+                          :type="g.review.conclusion.startsWith('OWNER') ? 'warning' : 'danger'">
+                    {{ $dict('ReviewConclusion', g.review.conclusion) }}
+                  </el-tag>
+                  <span v-else>待出具结论</span>
+                </el-descriptions-item>
+                <el-descriptions-item v-if="g.review.conclusion" label="货主/冷库承担">
+                  {{ g.review.ownerBorneWeight }}kg / {{ g.review.warehouseBorneWeight }}kg
+                </el-descriptions-item>
+                <el-descriptions-item v-if="g.review.conclusion" label="冷库赔付">
+                  {{ g.review.compensateAmount }} 元
+                </el-descriptions-item>
+              </el-descriptions>
+              <div v-if="g.baskets.length" class="hint" style="margin-bottom:6px">
+                坏果筐：<el-tag v-for="b in g.baskets" :key="b.id" size="small"
+                  :type="b.cause === 'ARRIVAL_QUALITY' ? 'warning' : 'danger'" style="margin-right:4px">
+                  {{ b.basketNo }}·{{ b.workstation }}·{{ $dict('BasketCause', b.cause) }}
+                </el-tag>
+              </div>
+              <div v-if="g.assessments.length" class="hint" style="margin-bottom:6px">
+                考核：<span v-for="(a, i) in g.assessments" :key="a.id">
+                  {{ $dict('AssessmentTarget', a.target) }}{{ a.targetName }}
+                  {{ $dict('AssessmentResult', a.result) }}{{ a.scoreChange }}分<span v-if="i < g.assessments.length-1">；</span>
+                </span>
+              </div>
+              <div v-if="g.compensations.length" class="hint" style="margin-bottom:10px">
+                客户赔付：<span v-for="p in g.compensations" :key="p.id">
+                  {{ p.compensationNo }} {{ p.amount }}元（{{ p.status }}）
+                </span>
+              </div>
+            </template>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="12">
         <el-col :span="12">
           <el-card shadow="never" style="margin-bottom:12px">
             <div class="card-title">最终客户流向</div>

@@ -130,10 +130,11 @@
                 <el-tag v-else type="info" size="small">无争议</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="100">
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
                 <el-button v-if="row.disputed && !row.disputeResolved" link type="primary"
                            @click="openResolve(row)">裁定</el-button>
+                <el-button link type="warning" @click="goReview(row)">发起损耗复核</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -171,8 +172,11 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+
+const router = useRouter()
 
 const sortingBatches = ref([])
 const categories = ref([])
@@ -277,6 +281,10 @@ async function submitResolve() {
   ElMessage.success('争议已裁定，账单口径已更新')
   resolveVisible.value = false
   if (current.value) records.value = await api.get('/api/sortings/batch/' + current.value.id)
+}
+
+function goReview(row) {
+  router.push({ path: '/reviews', query: { sortingId: row.id, batchId: current.value.id } })
 }
 
 async function load() {

@@ -56,8 +56,39 @@ public final class DomainEnums {
     public enum BillItemType {
         SALE("销售收入"), STORAGE_FEE("仓储费"), SORT_FEE("分拣费"),
         LABOR_FEE("分拣工时费"), LOSS_DEDUCT("超阈损耗扣款"), COMPLAINT_DEDUCT("投诉赔付扣款"),
-        ADVANCE_DEDUCT("预付款抵扣"), RETURN_DEDUCT("退货扣款"), REMAIN_VALUE("期末库存货值");
+        ADVANCE_DEDUCT("预付款抵扣"), RETURN_DEDUCT("退货扣款"), REMAIN_VALUE("期末库存货值"),
+        REVIEW_COMPENSATION("分拣损耗复核·冷库赔付"), REVIEW_OWNER_LOSS("分拣损耗复核·货主自担损耗"),
+        CUSTOMER_COMPENSATION("客户赔付记录（冷库对客）");
         public final String desc; BillItemType(String d) { this.desc = d; } }
+
+    /** 分拣损耗争议复核单状态 */
+    public enum ReviewStatus {
+        OPEN("待复核"), SAMPLING("重新抽样中"), CONFIRMED("已出具结论"), CANCELLED("已撤销");
+        public final String desc; ReviewStatus(String d) { this.desc = d; } }
+
+    /** 复核总体结论：损耗来自到货质量则货主承担；来自装卸/分拣操作不当则冷库赔付 */
+    public enum ReviewConclusion {
+        OWNER_QUALITY("到货质量差·货主承担"),
+        LOADING_SQUEEZE("装卸挤压·冷库赔付"),
+        SORT_EXPOSURE("分拣台长时间暴露·冷库赔付"),
+        MIXED("多方因素·分摊赔付");
+        public final String desc; ReviewConclusion(String d) { this.desc = d; } }
+
+    /** 坏果集中周转筐的原因判定（筐号 + 分拣工位 + 搬运时间串联结论） */
+    public enum BasketCause {
+        ARRIVAL_QUALITY("来货质量差"), LOADING_SQUEEZE("装卸挤压"),
+        SORT_EXPOSURE("分拣台长时间暴露"), INCLUSIVE("混合原因");
+        public final String desc; BasketCause(String d) { this.desc = d; } }
+
+    /** 考核对象：复核结论回写质检员 / 分拣班组 / 装卸班组 */
+    public enum AssessmentTarget {
+        QC_INSPECTOR("质检员"), SORT_TEAM("分拣班组"), LOADING_TEAM("装卸班组");
+        public final String desc; AssessmentTarget(String d) { this.desc = d; } }
+
+    /** 考核处理结果 */
+    public enum AssessmentResult {
+        DEDUCT("扣分/扣款"), NEUTRAL("无责记录"), BONUS("加分/申诉撤销");
+        public final String desc; AssessmentResult(String d) { this.desc = d; } }
 
     /** 风险告警级别 */
     public enum AlertLevel { WARN("预警"), CRITICAL("严重");
